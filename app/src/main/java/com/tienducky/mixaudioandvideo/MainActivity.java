@@ -141,6 +141,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             @Override
             public void onExportComplete() {
                 Log.d(TAG, "Export complete.");
+                enableExportButton(true);
+                ToastUtils.showShortToast(getApplicationContext(), "Export complete.");
             }
 
             @Override
