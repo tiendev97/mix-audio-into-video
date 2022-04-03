@@ -42,12 +42,16 @@ public class ExportService {
     private int mInputAudioTrack;
     private int mMuxerVideoTrack;
     private int mMuxerAudioTrack;
+    private volatile boolean mStopExport;
+    private volatile boolean mIsExportRunning;
 
 
     public void startExport(File outputFile, ExportElement exportElement, ExportAdapter exportAdapter) {
         mExportElement = exportElement;
         mExportAdapter = exportAdapter;
         mOutputFile = outputFile;
+        mIsExportRunning = false;
+        mStopExport = false;
         mExportThread.post(this::exportVideo);
     }
 
@@ -106,33 +110,49 @@ public class ExportService {
      * cleanup resources
      */
     private void cleanup() {
+        Log.i(TAG, "cleanup resources stopByUser: " + mStopExport);
+        mIsExportRunning = false;
+        mStopExport = false;
+
         if (muxer != null) {
             muxer.stop();
             muxer.release();
             muxer = null;
         }
 
-        if(mAudioDecoder != null) {
+        if (mAudioDecoder != null) {
             mAudioDecoder.stop();
             mAudioDecoder.release();
             mAudioDecoder = null;
         }
 
-        if(mAudioEncoder != null) {
+        if (mAudioEncoder != null) {
             mAudioEncoder.stop();
             mAudioEncoder.release();
             mAudioEncoder = null;
         }
 
-        if(mVideoExtractor != null) {
+        if (mVideoExtractor != null) {
             mVideoExtractor.release();
             mVideoExtractor = null;
         }
 
-        if(mAudioExtractor != null) {
+        if (mAudioExtractor != null) {
             mAudioExtractor.release();
             mVideoExtractor = null;
         }
+    }
+
+    public boolean isExportRunning() {
+        return mIsExportRunning;
+    }
+
+    /**
+     * Stop export video
+     */
+    public void stopExport() {
+        Log.i(TAG, "stop export video");
+        mStopExport = true;
     }
 
     /***
@@ -141,7 +161,6 @@ public class ExportService {
      * @param ex
      */
     private void handleExportFailed(Exception ex) {
-        Log.d(TAG, ex.toString());
         ex.printStackTrace();
         mOutputFile.delete();
         mUIThread.post(() -> mExportAdapter.onExportError());
@@ -153,7 +172,7 @@ public class ExportService {
      * @throws IOException
      */
     private void prepareAudioDecoderAndEncoder() throws IOException {
-        Log.i(TAG,"1. prepareAudioDecoderAndEncoder ");
+        Log.i(TAG, "1. prepareAudioDecoderAndEncoder ");
         mAudioExtractor.selectTrack(mInputAudioTrack);
         mAudioDecoder = MediaCodec.createDecoderByType(mInputAudioFormat.getString(MediaFormat.KEY_MIME));
         mAudioDecoder.configure(mInputAudioFormat, null, null, 0);
@@ -171,13 +190,13 @@ public class ExportService {
      * @throws IOException
      */
     private void prepareMediaMuxer() throws IOException {
-        Log.i(TAG,"2. prepareMediaMuxer ");
+        Log.i(TAG, "2. prepareMediaMuxer ");
         muxer = new MediaMuxer(mOutputFile.getPath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         mMuxerVideoTrack = muxer.addTrack(mInputVideoFormat);
         mMuxerAudioTrack = muxer.addTrack(mAudioEncoder.getOutputFormat());
         muxer.start();
-        Log.i(TAG, "2. muxerVideoTrack " + mMuxerVideoTrack);
-        Log.i(TAG, "2. muxerAudioTrack " + mMuxerAudioTrack);
+//        Log.i(TAG, "2. muxerVideoTrack " + mMuxerVideoTrack);
+//        Log.i(TAG, "2. muxerAudioTrack " + mMuxerAudioTrack);
     }
 
     /***
@@ -198,13 +217,15 @@ public class ExportService {
      */
     @SuppressLint("WrongConstant")
     private void startExportVideo() {
+        Log.i(TAG, "3. startExportVideo ");
         long startTime = System.currentTimeMillis();
         int maxBufferSize = mInputVideoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
         ByteBuffer videoBuffer = ByteBuffer.allocateDirect(maxBufferSize);
         mVideoExtractor.selectTrack(mInputVideoTrack);
+        mIsExportRunning = true;
 
-        while (true) {
+        while (!mStopExport) {
             int size = mVideoExtractor.readSampleData(videoBuffer, 0);
             if (size == -1) { // last file
                 break;
@@ -224,13 +245,15 @@ public class ExportService {
     }
 
     private int getCurrentProgress(long timeStamp) {
-        return (int) ((float)timeStamp / mExportDuration * 100);
+        return (int) ((float) timeStamp / mExportDuration * 100);
     }
 
     /***
      * start export audio
      */
     private void startExportAudio() {
+        Log.i(TAG, "4. startExportAudio ");
+
         long startTime = System.currentTimeMillis();
         boolean allInputExtracted = false;
         boolean allInputDecoded = false;
@@ -238,7 +261,7 @@ public class ExportService {
         long timeoutUs = 10000L;
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
 
-        while (!allOutputEncoded) {
+        while (!allOutputEncoded && !mStopExport) {
             // feed input to decoder
             if (!allInputExtracted) {
                 int inBufferId = mAudioDecoder.dequeueInputBuffer(timeoutUs);
@@ -266,7 +289,7 @@ public class ExportService {
             boolean encoderOutputAvailable = true;
             boolean decoderOutputAvailable = !allInputDecoded;
 
-            while (encoderOutputAvailable || decoderOutputAvailable) {
+            while ((encoderOutputAvailable || decoderOutputAvailable)) {
                 // drain Encoder & mux first
                 int outBufferId = mAudioEncoder.dequeueOutputBuffer(bufferInfo, timeoutUs);
                 if (outBufferId >= 0) {

@@ -153,6 +153,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         });
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(Export.getInstance().isExportRunning()) {
+            Export.getInstance().stopExport();
+        }
+    }
+
     private void enableExportButton(boolean enable) {
         mExportBtn.setEnabled(enable);
         mExportBtn.setClickable(enable);
