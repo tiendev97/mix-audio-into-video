@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.models;
+package com.samsung.mixaudioandvideo.models;
 
 public class TrackType {
     public static final int VIDEO = 1;

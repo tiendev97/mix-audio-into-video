@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.utils;
+package com.samsung.mixaudioandvideo.utils;
 
 import android.content.Context;
 import android.widget.Toast;

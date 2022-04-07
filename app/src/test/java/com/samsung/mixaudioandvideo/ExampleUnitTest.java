@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo;
+package com.samsung.mixaudioandvideo;
 
 import org.junit.Test;
 

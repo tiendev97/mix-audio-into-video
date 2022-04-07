@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.models;
+package com.samsung.mixaudioandvideo.models;
 
 import java.io.Serializable;
 

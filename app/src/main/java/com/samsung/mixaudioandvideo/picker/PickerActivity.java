@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.picker;
+package com.samsung.mixaudioandvideo.picker;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -8,10 +8,10 @@ import android.database.Cursor;
 import android.os.Bundle;
 import android.provider.MediaStore;
 
-import com.tienducky.mixaudioandvideo.databinding.ActivityPickerBinding;
-import com.tienducky.mixaudioandvideo.models.MediaItem;
-import com.tienducky.mixaudioandvideo.models.MediaType;
-import com.tienducky.mixaudioandvideo.utils.AppConstants;
+import com.samsung.mixaudioandvideo.databinding.ActivityPickerBinding;
+import com.samsung.mixaudioandvideo.models.MediaItem;
+import com.samsung.mixaudioandvideo.models.MediaType;
+import com.samsung.mixaudioandvideo.utils.AppConstants;
 
 import java.io.File;
 import java.util.ArrayList;

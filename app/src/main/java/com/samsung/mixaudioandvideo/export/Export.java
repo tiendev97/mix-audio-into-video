@@ -1,8 +1,6 @@
-package com.tienducky.mixaudioandvideo.export;
+package com.samsung.mixaudioandvideo.export;
 
-import com.tienducky.mixaudioandvideo.utils.ToastUtils;
-
-import static com.tienducky.mixaudioandvideo.utils.AppConstants.DEBUG_TAG;
+import com.samsung.mixaudioandvideo.utils.ToastUtils;
 
 import android.app.Activity;
 import android.os.Environment;

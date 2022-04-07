@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.picker;
+package com.samsung.mixaudioandvideo.picker;
 
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
@@ -7,10 +7,9 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
-import com.tienducky.mixaudioandvideo.R;
-import com.tienducky.mixaudioandvideo.databinding.PickerRecyclerViewItemLayoutBinding;
-import com.tienducky.mixaudioandvideo.models.MediaItem;
-import com.tienducky.mixaudioandvideo.models.MediaType;
+import com.samsung.mixaudioandvideo.R;
+import com.samsung.mixaudioandvideo.databinding.PickerRecyclerViewItemLayoutBinding;
+import com.samsung.mixaudioandvideo.models.MediaItem;
 
 import java.util.ArrayList;
 

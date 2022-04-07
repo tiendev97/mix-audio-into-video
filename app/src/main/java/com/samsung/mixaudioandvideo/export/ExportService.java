@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.export;
+package com.samsung.mixaudioandvideo.export;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -14,8 +14,8 @@ import androidx.annotation.NonNull;
 
 import com.techyourchance.threadposter.BackgroundThreadPoster;
 import com.techyourchance.threadposter.UiThreadPoster;
-import com.tienducky.mixaudioandvideo.models.TrackType;
-import com.tienducky.mixaudioandvideo.utils.MediaUtils;
+import com.samsung.mixaudioandvideo.models.TrackType;
+import com.samsung.mixaudioandvideo.utils.MediaUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -128,6 +128,7 @@ public class ExportService {
      */
     private void handleExportComplete() {
         MediaScannerConnection.scanFile(mActivity, new String[]{mOutputFile.getPath()}, null, (path, uri) -> {
+            Log.i(TAG, "runMediaScanner " + mOutputFile.getPath());
             mUIThread.post(() -> mExportAdapter.onExportComplete());
         });
     }
@@ -270,7 +271,7 @@ public class ExportService {
                 bufferInfo.flags = flags;
                 bufferInfo.size = size;
                 muxer.writeSampleData(mMuxerVideoTrack, videoBuffer, bufferInfo);
-                Log.i(TAG, "mux video: { timeStamp " + sampleTimeUs + " , progress = " + getCurrentProgress(sampleTimeUs) + "}");
+//                Log.i(TAG, "mux video: { timeStamp " + sampleTimeUs + " , progress = " + getCurrentProgress(sampleTimeUs) + "}");
                 mVideoExtractor.advance();
             }
         } catch (Exception ex) {
@@ -353,10 +354,10 @@ public class ExportService {
                         ByteBuffer encodedBuffer = mAudioEncoder.getOutputBuffer(outBufferId);
                         muxer.writeSampleData(mMuxerAudioTrack, encodedBuffer, mAudioBufferInfo);
                         mAudioEncoder.releaseOutputBuffer(outBufferId, false);
-                        Log.i(TAG, "mux audio: { timeStamp = "
-                                + mAudioBufferInfo.presentationTimeUs + "}"
-                                + " , progress = " + getCurrentProgress(mAudioBufferInfo.presentationTimeUs) + "}"
-                        );
+//                        Log.i(TAG, "mux audio: { timeStamp = "
+//                                + mAudioBufferInfo.presentationTimeUs + "}"
+//                                + " , progress = " + getCurrentProgress(mAudioBufferInfo.presentationTimeUs) + "}"
+//                        );
                         mUIThread.post(() -> mExportAdapter.onExportProgressUpdate(getCurrentProgress(mAudioBufferInfo.presentationTimeUs)));
 
                         // check finished

@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.utils;
+package com.samsung.mixaudioandvideo.utils;
 
 public class AppConstants {
     public static String DEBUG_TAG = "TAG->";

@@ -1,10 +1,10 @@
-package com.tienducky.mixaudioandvideo.utils;
+package com.samsung.mixaudioandvideo.utils;
 
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.util.Log;
 
-import com.tienducky.mixaudioandvideo.models.TrackType;
+import com.samsung.mixaudioandvideo.models.TrackType;
 
 public class MediaUtils {
     private static String TAG = AppConstants.DEBUG_TAG + "MediaUtils";

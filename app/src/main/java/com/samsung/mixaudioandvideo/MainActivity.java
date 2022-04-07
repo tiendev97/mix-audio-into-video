@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo;
+package com.samsung.mixaudioandvideo;
 
 import androidx.activity.result.ActivityResult;
 import androidx.activity.result.ActivityResultLauncher;
@@ -12,16 +12,16 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 
-import com.tienducky.mixaudioandvideo.databinding.ActivityMainBinding;
-import com.tienducky.mixaudioandvideo.export.Export;
-import com.tienducky.mixaudioandvideo.export.ExportAdapter;
-import com.tienducky.mixaudioandvideo.export.ExportElement;
-import com.tienducky.mixaudioandvideo.models.MediaItem;
-import com.tienducky.mixaudioandvideo.picker.PickerActivity;
-import com.tienducky.mixaudioandvideo.utils.AppConstants;
-import com.tienducky.mixaudioandvideo.utils.ToastUtils;
+import com.samsung.mixaudioandvideo.databinding.ActivityMainBinding;
+import com.samsung.mixaudioandvideo.export.Export;
+import com.samsung.mixaudioandvideo.export.ExportAdapter;
+import com.samsung.mixaudioandvideo.export.ExportElement;
+import com.samsung.mixaudioandvideo.models.MediaItem;
+import com.samsung.mixaudioandvideo.picker.PickerActivity;
+import com.samsung.mixaudioandvideo.utils.AppConstants;
+import com.samsung.mixaudioandvideo.utils.ToastUtils;
 
-import static com.tienducky.mixaudioandvideo.utils.AppConstants.DEBUG_TAG;
+import static com.samsung.mixaudioandvideo.utils.AppConstants.DEBUG_TAG;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 

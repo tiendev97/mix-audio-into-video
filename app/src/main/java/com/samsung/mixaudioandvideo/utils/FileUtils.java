@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.utils;
+package com.samsung.mixaudioandvideo.utils;
 
 import android.app.Activity;
 import android.database.Cursor;

@@ -1,4 +1,4 @@
-package com.tienducky.mixaudioandvideo.export;
+package com.samsung.mixaudioandvideo.export;
 
 public interface ExportAdapter {
     void onExportComplete();
