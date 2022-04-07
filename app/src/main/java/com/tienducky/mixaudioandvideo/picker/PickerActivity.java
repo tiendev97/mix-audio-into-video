@@ -10,8 +10,10 @@ import android.provider.MediaStore;
 
 import com.tienducky.mixaudioandvideo.databinding.ActivityPickerBinding;
 import com.tienducky.mixaudioandvideo.models.MediaItem;
+import com.tienducky.mixaudioandvideo.models.MediaType;
 import com.tienducky.mixaudioandvideo.utils.AppConstants;
 
+import java.io.File;
 import java.util.ArrayList;
 
 public class PickerActivity extends AppCompatActivity {
@@ -68,12 +70,13 @@ public class PickerActivity extends AppCompatActivity {
                 String filePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
                 String displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
 
-                if(extractFileName(displayName).equalsIgnoreCase("output.mp4"))
+                if(!isValidFilePath(filePath))
                     continue;
 
                 MediaItem mediaItem = new MediaItem();
                 mediaItem.setFilePath(filePath);
                 mediaItem.setFileName(extractFileName(displayName));
+                mediaItem.setMediaType(MediaType.VIDEO);
                 videoItems.add(mediaItem);
             } while (cursor.moveToNext());
 
@@ -83,6 +86,10 @@ public class PickerActivity extends AppCompatActivity {
         }
 
         return videoItems;
+    }
+
+    private boolean isValidFilePath(String filePath) {
+        return new File(filePath).exists();
     }
 
     public ArrayList<MediaItem> getAudioFilesFromExternalStorage() {
@@ -100,9 +107,14 @@ public class PickerActivity extends AppCompatActivity {
                 String filePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
                 String displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
 
+                if(!isValidFilePath(filePath) && isMp3File(filePath)) {
+                    continue;
+                }
+
                 MediaItem mediaItem = new MediaItem();
                 mediaItem.setFilePath(filePath);
                 mediaItem.setFileName(extractFileName(displayName));
+                mediaItem.setMediaType(MediaType.AUDIO);
                 videoItems.add(mediaItem);
             } while (cursor.moveToNext());
 
@@ -115,6 +127,11 @@ public class PickerActivity extends AppCompatActivity {
     }
 
     private String extractFileName(String filePath){
-        return filePath.substring(filePath.lastIndexOf("/") + 1, filePath.length());
+        return filePath.substring(filePath.lastIndexOf("/") + 1);
+    }
+
+    private boolean isMp3File(String filePath) {
+        String fileExtension = filePath.substring(filePath.lastIndexOf("."));
+        return fileExtension.equalsIgnoreCase(".mp3");
     }
 }

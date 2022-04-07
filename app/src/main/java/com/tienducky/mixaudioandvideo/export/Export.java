@@ -8,8 +8,12 @@ import android.app.Activity;
 import android.os.Environment;
 
 import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.concurrent.TimeUnit;
 
 public class Export {
+    private static final String ROOT_FOLDER = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + File.separator;
     private static Export _instance = new Export();
     private ExportService mExportService;
 
@@ -29,13 +33,19 @@ public class Export {
             ToastUtils.showShortToast(activity, "Can't export video.");
         } else {
             mExportService = new ExportService();
-            mExportService.startExport(outputFile, exportElement, exportAdapter);
+            mExportService.startExport(activity, outputFile, exportElement, exportAdapter);
         }
     }
 
     private File createOutputFile(){
-        String exportPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + File.separator + "export_output.mp4";
+        Date date = new Date();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
+        String fileName = dateFormat.format(date) + "_" + TimeUnit.MICROSECONDS.toSeconds(System.currentTimeMillis()) + ".mp4";
+        String exportPath = ROOT_FOLDER + fileName;
         File outputFile = new File(exportPath);
+
+        if(outputFile.exists())
+            outputFile.delete();
 
         return outputFile;
     }

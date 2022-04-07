@@ -9,13 +9,13 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:padding="16dp"
         android:orientation="vertical">
 
         <Button
             android:id="@+id/btn_select_video_file"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/default_margin"
             android:text="Select video file"/>
 
         <TextView
@@ -36,6 +36,23 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/default_margin"/>
+
+        <ProgressBar
+            android:id="@+id/progressExport"
+            style="?android:progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/default_margin"
+            android:visibility="gone"/>
+
+        <TextView
+            android:id="@+id/tvExportProgress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAlignment="textEnd"
+            android:textSize="18sp"
+            android:text="0%"
+            android:visibility="gone"/>
 
         <Button
             android:id="@+id/btn_export_video"

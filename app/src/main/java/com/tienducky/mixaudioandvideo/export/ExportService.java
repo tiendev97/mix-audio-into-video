@@ -1,11 +1,13 @@
 package com.tienducky.mixaudioandvideo.export;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
+import android.media.MediaScannerConnection;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -21,16 +23,19 @@ import java.nio.ByteBuffer;
 
 public class ExportService {
     private static final String TAG = "ExportService";
+
+    private static final String OUTPUT_AUDIO_KEY_MINE = "audio/mp4a-latm";
+    private static final long TIMEOUT_US = 10000L;
+
     private final BackgroundThreadPoster mExportThread = new BackgroundThreadPoster();
     private final UiThreadPoster mUIThread = new UiThreadPoster();
     private ExportElement mExportElement;
     private ExportAdapter mExportAdapter;
     private File mOutputFile;
+    private Activity mActivity;
 
     // export params
     private long mVideoDuration;
-    private long mExportDuration;
-    private long mLastVideoTimeUs;
     private MediaExtractor mVideoExtractor;
     private MediaExtractor mAudioExtractor;
     private MediaFormat mInputVideoFormat;
@@ -44,14 +49,16 @@ public class ExportService {
     private int mMuxerAudioTrack;
     private volatile boolean mStopExport;
     private volatile boolean mIsExportRunning;
+    private volatile boolean mErrorWhenExporting;
+    private boolean mMuxAudioDone;
+    private boolean mMuxVideoDone;
 
 
-    public void startExport(File outputFile, ExportElement exportElement, ExportAdapter exportAdapter) {
+    public void startExport(Activity activity, File outputFile, ExportElement exportElement, ExportAdapter exportAdapter) {
         mExportElement = exportElement;
         mExportAdapter = exportAdapter;
         mOutputFile = outputFile;
-        mIsExportRunning = false;
-        mStopExport = false;
+        mActivity = activity;
         mExportThread.post(this::exportVideo);
     }
 
@@ -60,9 +67,9 @@ public class ExportService {
 
         try {
             initResources();
-            startExportVideo();
-            startExportAudio();
-            handleExportComplete();
+            mExportThread.post(this::startMuxVideo);
+            mExportThread.post(this::startMuxAudio);
+            waitMuxerFinished();
         } catch (Exception ex) {
             handleExportFailed(ex);
         } finally {
@@ -90,7 +97,6 @@ public class ExportService {
 
         // calculate export video duration
         mVideoDuration = mInputVideoFormat.getLong(MediaFormat.KEY_DURATION);
-        mExportDuration = mVideoDuration * 2;
 
         // prepare audio decoder and encoder
         prepareAudioDecoderAndEncoder();
@@ -99,11 +105,31 @@ public class ExportService {
         prepareMediaMuxer();
     }
 
+    private void waitMuxerFinished() {
+        try {
+            synchronized (this) {
+                while (!mMuxVideoDone || !mMuxAudioDone) {
+                    wait();
+                }
+
+                if (mErrorWhenExporting) {
+                    handleExportFailed(new Exception("Error when mux audio and video"));
+                } else {
+                    handleExportComplete();
+                }
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
     /***
      * handle export complete
      */
     private void handleExportComplete() {
-        mUIThread.post(() -> mExportAdapter.onExportComplete());
+        MediaScannerConnection.scanFile(mActivity, new String[]{mOutputFile.getPath()}, null, (path, uri) -> {
+            mUIThread.post(() -> mExportAdapter.onExportComplete());
+        });
     }
 
     /***
@@ -111,8 +137,6 @@ public class ExportService {
      */
     private void cleanup() {
         Log.i(TAG, "cleanup resources stopByUser: " + mStopExport);
-        mIsExportRunning = false;
-        mStopExport = false;
 
         if (muxer != null) {
             muxer.stop();
@@ -141,6 +165,10 @@ public class ExportService {
             mAudioExtractor.release();
             mVideoExtractor = null;
         }
+
+        if (mStopExport) {
+            clearOutputFile();
+        }
     }
 
     public boolean isExportRunning() {
@@ -153,6 +181,8 @@ public class ExportService {
     public void stopExport() {
         Log.i(TAG, "stop export video");
         mStopExport = true;
+        clearOutputFile();
+        cleanup();
     }
 
     /***
@@ -162,8 +192,13 @@ public class ExportService {
      */
     private void handleExportFailed(Exception ex) {
         ex.printStackTrace();
-        mOutputFile.delete();
-        mUIThread.post(() -> mExportAdapter.onExportError());
+        clearOutputFile();
+        mUIThread.post(() -> mExportAdapter.onExportFail());
+    }
+
+    private void clearOutputFile() {
+        boolean isDelete = mOutputFile.delete();
+        Log.i(TAG, "clearOutputFile: " + isDelete);
     }
 
     /***
@@ -195,8 +230,6 @@ public class ExportService {
         mMuxerVideoTrack = muxer.addTrack(mInputVideoFormat);
         mMuxerAudioTrack = muxer.addTrack(mAudioEncoder.getOutputFormat());
         muxer.start();
-//        Log.i(TAG, "2. muxerVideoTrack " + mMuxerVideoTrack);
-//        Log.i(TAG, "2. muxerAudioTrack " + mMuxerAudioTrack);
     }
 
     /***
@@ -216,8 +249,8 @@ public class ExportService {
      * start export video
      */
     @SuppressLint("WrongConstant")
-    private void startExportVideo() {
-        Log.i(TAG, "3. startExportVideo ");
+    private void startMuxVideo() {
+        Log.i(TAG, "3. startMuxVideo ");
         long startTime = System.currentTimeMillis();
         int maxBufferSize = mInputVideoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
@@ -225,128 +258,163 @@ public class ExportService {
         mVideoExtractor.selectTrack(mInputVideoTrack);
         mIsExportRunning = true;
 
-        while (!mStopExport) {
-            int size = mVideoExtractor.readSampleData(videoBuffer, 0);
-            if (size == -1) { // last file
-                break;
+        try {
+            while (!mStopExport) {
+                int size = mVideoExtractor.readSampleData(videoBuffer, 0);
+                if (size == -1) { // last file
+                    break;
+                }
+                long sampleTimeUs = mVideoExtractor.getSampleTime();
+                int flags = mVideoExtractor.getSampleFlags();
+                bufferInfo.presentationTimeUs = sampleTimeUs;
+                bufferInfo.flags = flags;
+                bufferInfo.size = size;
+                muxer.writeSampleData(mMuxerVideoTrack, videoBuffer, bufferInfo);
+                Log.i(TAG, "mux video: { timeStamp " + sampleTimeUs + " , progress = " + getCurrentProgress(sampleTimeUs) + "}");
+                mVideoExtractor.advance();
             }
-            long sampleTimeUs = mVideoExtractor.getSampleTime();
-            int flags = mVideoExtractor.getSampleFlags();
-            bufferInfo.presentationTimeUs = sampleTimeUs;
-            bufferInfo.flags = flags;
-            bufferInfo.size = size;
-            muxer.writeSampleData(mMuxerVideoTrack, videoBuffer, bufferInfo);
-            mLastVideoTimeUs = sampleTimeUs;
-            Log.i(TAG, "export video progress: { timeStamp " + sampleTimeUs + " , progress = " + getCurrentProgress(sampleTimeUs) + "}");
-            mVideoExtractor.advance();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            mErrorWhenExporting = true;
         }
 
         Log.i(TAG, "total time export video: " + (System.currentTimeMillis() - startTime));
+        synchronized (this) {
+            mMuxVideoDone = true;
+            notifyAll();
+        }
     }
 
     private int getCurrentProgress(long timeStamp) {
-        return (int) ((float) timeStamp / mExportDuration * 100);
+        return (int) ((float) timeStamp / mVideoDuration * 100);
     }
 
     /***
      * start export audio
      */
-    private void startExportAudio() {
-        Log.i(TAG, "4. startExportAudio ");
+    private void startMuxAudio() {
+        Log.i(TAG, "4. startMuxAudio ");
 
         long startTime = System.currentTimeMillis();
         boolean allInputExtracted = false;
         boolean allInputDecoded = false;
         boolean allOutputEncoded = false;
-        long timeoutUs = 10000L;
-        MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+        MediaCodec.BufferInfo mAudioBufferInfo = new MediaCodec.BufferInfo();
+        long lastPresentationTimeUs = 0;
 
-        while (!allOutputEncoded && !mStopExport) {
-            // feed input to decoder
-            if (!allInputExtracted) {
-                int inBufferId = mAudioDecoder.dequeueInputBuffer(timeoutUs);
-                if (inBufferId >= 0) {
-                    ByteBuffer buffer = mAudioDecoder.getInputBuffer(inBufferId);
-                    int sampleSize = mAudioExtractor.readSampleData(buffer, 0);
+        try {
+            while (!allOutputEncoded && !mStopExport) {
+                // feed input to decoder
+                if (!allInputExtracted) {
+                    int inBufferId = mAudioDecoder.dequeueInputBuffer(TIMEOUT_US);
+                    if (inBufferId >= 0) {
+                        ByteBuffer buffer = mAudioDecoder.getInputBuffer(inBufferId);
+                        int sampleSize = mAudioExtractor.readSampleData(buffer, 0);
 
-                    if (sampleSize >= 0 && mAudioExtractor.getSampleTime() <= mVideoDuration) {
-                        mAudioDecoder.queueInputBuffer(
-                                inBufferId, 0, sampleSize,
-                                mAudioExtractor.getSampleTime(),
-                                mAudioExtractor.getSampleFlags()
-                        );
-                        mAudioExtractor.advance();
-                    } else {
-                        mAudioDecoder.queueInputBuffer(
-                                inBufferId, 0, 0,
-                                0, MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                        );
-                        allInputExtracted = true;
+                        if (sampleSize >= 0) {
+                            if (mAudioBufferInfo.presentationTimeUs > mVideoDuration) {
+                                mAudioDecoder.queueInputBuffer(
+                                        inBufferId, 0, 0,
+                                        0, MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                                );
+                                allInputExtracted = true;
+                            } else {
+                                mAudioDecoder.queueInputBuffer(
+                                        inBufferId, 0,
+                                        sampleSize,
+                                        lastPresentationTimeUs + mAudioExtractor.getSampleTime(),
+                                        mAudioExtractor.getSampleFlags()
+                                );
+                                mAudioExtractor.advance();
+                            }
+                        } else {
+                            if (mAudioBufferInfo.presentationTimeUs < mVideoDuration) {
+                                lastPresentationTimeUs = mAudioBufferInfo.presentationTimeUs;
+                                mAudioExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                                mAudioExtractor.advance();
+                            } else {
+                                mAudioDecoder.queueInputBuffer(
+                                        inBufferId, 0, 0,
+                                        0, MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                                );
+                                allInputExtracted = true;
+                            }
+                        }
                     }
                 }
-            }
 
-            boolean encoderOutputAvailable = true;
-            boolean decoderOutputAvailable = !allInputDecoded;
+                boolean encoderOutputAvailable = true;
+                boolean decoderOutputAvailable = true;
 
-            while ((encoderOutputAvailable || decoderOutputAvailable)) {
-                // drain Encoder & mux first
-                int outBufferId = mAudioEncoder.dequeueOutputBuffer(bufferInfo, timeoutUs);
-                if (outBufferId >= 0) {
-                    ByteBuffer encodedBuffer = mAudioEncoder.getOutputBuffer(outBufferId);
-                    muxer.writeSampleData(mMuxerAudioTrack, encodedBuffer, bufferInfo);
-                    mAudioEncoder.releaseOutputBuffer(outBufferId, false);
-                    Log.i(TAG, "export audio progress: { timeStamp = " + bufferInfo.presentationTimeUs + " , progress: " + getCurrentProgress(mLastVideoTimeUs + bufferInfo.presentationTimeUs) + "}");
-
-                    // check finished
-                    if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                        allOutputEncoded = true;
-                        break;
-                    }
-                } else if (outBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    encoderOutputAvailable = false;
-                }
-
-                if (outBufferId != MediaCodec.INFO_TRY_AGAIN_LATER)
-                    continue;
-
-                // Get output from decoder and feed it to encoder
-                if (!allInputDecoded) {
-                    outBufferId = mAudioDecoder.dequeueOutputBuffer(bufferInfo, timeoutUs);
+                while ((encoderOutputAvailable || decoderOutputAvailable)) {
+                    // drain Encoder & mux first
+                    int outBufferId = mAudioEncoder.dequeueOutputBuffer(mAudioBufferInfo, TIMEOUT_US);
                     if (outBufferId >= 0) {
-                        ByteBuffer outBuffer = mAudioDecoder.getOutputBuffer(outBufferId);
+                        ByteBuffer encodedBuffer = mAudioEncoder.getOutputBuffer(outBufferId);
+                        muxer.writeSampleData(mMuxerAudioTrack, encodedBuffer, mAudioBufferInfo);
+                        mAudioEncoder.releaseOutputBuffer(outBufferId, false);
+                        Log.i(TAG, "mux audio: { timeStamp = "
+                                + mAudioBufferInfo.presentationTimeUs + "}"
+                                + " , progress = " + getCurrentProgress(mAudioBufferInfo.presentationTimeUs) + "}"
+                        );
+                        mUIThread.post(() -> mExportAdapter.onExportProgressUpdate(getCurrentProgress(mAudioBufferInfo.presentationTimeUs)));
 
-                        // If needed, process decoded data here
-                        // ...
-                        // We drained the encoder, so there should be input buffer
-                        // available. If this is not the case, we get a NullPointerException
-                        // when touching inBuffer
-                        int inBufferId = mAudioEncoder.dequeueInputBuffer(timeoutUs);
-                        ByteBuffer inBuffer = mAudioEncoder.getInputBuffer(inBufferId);
-
-                        // Copy buffers - decoder output goes to encoder input
-                        inBuffer.put(outBuffer);
-
-                        // Feed encoder
-                        mAudioEncoder.queueInputBuffer(
-                                inBufferId, bufferInfo.offset,
-                                bufferInfo.size,
-                                bufferInfo.presentationTimeUs,
-                                bufferInfo.flags);
-
-                        mAudioDecoder.releaseOutputBuffer(outBufferId, false);
-                        // Did we get all output from decoder?
-                        if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0)
-                            allInputDecoded = true;
-
+                        // check finished
+                        if ((mAudioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                            allOutputEncoded = true;
+                            break;
+                        }
                     } else if (outBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                        decoderOutputAvailable = false;
+                        encoderOutputAvailable = false;
+                    }
+
+                    if (outBufferId != MediaCodec.INFO_TRY_AGAIN_LATER)
+                        continue;
+
+                    // Get output from decoder and feed it to encoder
+                    if (!allInputDecoded) {
+                        outBufferId = mAudioDecoder.dequeueOutputBuffer(mAudioBufferInfo, TIMEOUT_US);
+                        if (outBufferId >= 0) {
+                            ByteBuffer outBuffer = mAudioDecoder.getOutputBuffer(outBufferId);
+
+                            // If needed, process decoded data here
+                            // ...
+                            // We drained the encoder, so there should be input buffer
+                            // available. If this is not the case, we get a NullPointerException
+                            // when touching inBuffer
+                            int inBufferId = mAudioEncoder.dequeueInputBuffer(TIMEOUT_US);
+                            ByteBuffer inBuffer = mAudioEncoder.getInputBuffer(inBufferId);
+
+                            // Copy buffers - decoder output goes to encoder input
+                            inBuffer.put(outBuffer);
+
+                            // Feed encoder
+                            mAudioEncoder.queueInputBuffer(
+                                    inBufferId, mAudioBufferInfo.offset,
+                                    mAudioBufferInfo.size,
+                                    mAudioBufferInfo.presentationTimeUs,
+                                    mAudioBufferInfo.flags);
+
+                            mAudioDecoder.releaseOutputBuffer(outBufferId, false);
+                            // Did we get all output from decoder?
+                            if ((mAudioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0)
+                                allInputDecoded = true;
+
+                        } else if (outBufferId == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                            decoderOutputAvailable = false;
+                        }
                     }
                 }
             }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            mErrorWhenExporting = true;
         }
-
         Log.i(TAG, "total time export audio: " + (System.currentTimeMillis() - startTime));
+        synchronized (this) {
+            mMuxAudioDone = true;
+            notifyAll();
+        }
     }
 
     /***
@@ -359,7 +427,7 @@ public class ExportService {
     @NonNull
     private MediaFormat prepareAudioOutputFormat(MediaFormat inputAudioFormat) {
         MediaFormat outputFormat = new MediaFormat();
-        outputFormat.setString(MediaFormat.KEY_MIME, "audio/mp4a-latm");
+        outputFormat.setString(MediaFormat.KEY_MIME, OUTPUT_AUDIO_KEY_MINE);
         outputFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
         outputFormat.setInteger(MediaFormat.KEY_SAMPLE_RATE, inputAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE));
         outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, inputAudioFormat.getInteger(MediaFormat.KEY_BIT_RATE));

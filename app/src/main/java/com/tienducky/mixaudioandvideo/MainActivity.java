@@ -8,20 +8,17 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
-import android.widget.Button;
-import android.widget.TextView;
 
+import com.tienducky.mixaudioandvideo.databinding.ActivityMainBinding;
 import com.tienducky.mixaudioandvideo.export.Export;
 import com.tienducky.mixaudioandvideo.export.ExportAdapter;
 import com.tienducky.mixaudioandvideo.export.ExportElement;
 import com.tienducky.mixaudioandvideo.models.MediaItem;
 import com.tienducky.mixaudioandvideo.picker.PickerActivity;
 import com.tienducky.mixaudioandvideo.utils.AppConstants;
-import com.tienducky.mixaudioandvideo.utils.FileUtils;
 import com.tienducky.mixaudioandvideo.utils.ToastUtils;
 
 import static com.tienducky.mixaudioandvideo.utils.AppConstants.DEBUG_TAG;
@@ -30,35 +27,22 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private static final String TAG = DEBUG_TAG + "MainActivity";
 
-    private Button mSelectVideoFileBtn;
-    private Button mSelectAudioFileBtn;
-    private Button mExportBtn;
-
-    private TextView mVideoInfoTV;
-    private TextView mAudioInfoTv;
+    private ActivityMainBinding mViewBinding;
     private MediaItem mVideoItem;
     private MediaItem mAudioItem;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-
-        initViews();
+        mViewBinding = ActivityMainBinding.inflate(getLayoutInflater());
+        setContentView(mViewBinding.getRoot());
+        setListeners();
     }
 
-    private void initViews() {
-        // find views
-        mSelectVideoFileBtn = findViewById(R.id.btn_select_video_file);
-        mSelectAudioFileBtn = findViewById(R.id.btn_select_audio_file);
-        mExportBtn = findViewById(R.id.btn_export_video);
-        mVideoInfoTV = findViewById(R.id.tv_video_info);
-        mAudioInfoTv = findViewById(R.id.tv_audio_info);
-
-        // add listeners
-        mSelectVideoFileBtn.setOnClickListener(this);
-        mSelectAudioFileBtn.setOnClickListener(this);
-        mExportBtn.setOnClickListener(this);
+    private void setListeners() {
+        mViewBinding.btnSelectVideoFile.setOnClickListener(this);
+        mViewBinding.btnSelectAudioFile.setOnClickListener(this);
+        mViewBinding.btnExportVideo.setOnClickListener(this);
     }
 
     @Override
@@ -93,7 +77,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             if (intentData != null) {
                 MediaItem videoItem = (MediaItem) intentData.getSerializableExtra(AppConstants.SELECTED_MEDIA_ITEM);
                 mVideoItem = videoItem;
-                mVideoInfoTV.setText(videoItem.getFileName());
+                mViewBinding.tvVideoInfo.setText(videoItem.getFileName());
             }
 
         }
@@ -105,7 +89,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             if (intentData != null) {
                 if (intentData != null) {
                     MediaItem audioItem = (MediaItem) intentData.getSerializableExtra(AppConstants.SELECTED_MEDIA_ITEM);
-                    mAudioInfoTv.setText(audioItem.getFileName());
+                    mViewBinding.tvAudioInfo.setText(audioItem.getFileName());
                     mAudioItem = audioItem;
                 }
             }
@@ -131,7 +115,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             return;
         }
 
-        enableExportButton(false);
+        prepareUIForExport(false, true, 0);
 
         ExportElement exportParams = new ExportElement();
         exportParams.setVideoFilePath(mVideoItem.getFilePath());
@@ -141,28 +125,46 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             @Override
             public void onExportComplete() {
                 Log.d(TAG, "Export complete.");
-                enableExportButton(true);
+                prepareUIForExport(true, false, 0);
                 ToastUtils.showShortToast(getApplicationContext(), "Export complete.");
             }
 
             @Override
-            public void onExportError() {
+            public void onExportFail() {
                 Log.d(TAG, "Export error.");
-                enableExportButton(true);
+                prepareUIForExport(true, false, 0);
+            }
+
+            @Override
+            public void onExportProgressUpdate(int progress) {
+                updateExportProgress(progress);
             }
         });
+    }
+
+    private void prepareUIForExport(boolean enableExportButton, boolean enableExportProgress, int progress) {
+        enableExportButton(enableExportButton);
+        mViewBinding.progressExport.setVisibility(enableExportProgress ? View.VISIBLE : View.GONE);
+        mViewBinding.progressExport.setProgress(progress);
+        mViewBinding.tvExportProgress.setVisibility(enableExportProgress ? View.VISIBLE : View.GONE);
+        mViewBinding.tvExportProgress.setText(progress + "%");
+    }
+
+    private void updateExportProgress(int progress) {
+        mViewBinding.progressExport.setProgress(progress);
+        mViewBinding.tvExportProgress.setText(progress + "%");
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if(Export.getInstance().isExportRunning()) {
+        if (Export.getInstance().isExportRunning()) {
             Export.getInstance().stopExport();
         }
     }
 
     private void enableExportButton(boolean enable) {
-        mExportBtn.setEnabled(enable);
-        mExportBtn.setClickable(enable);
+        mViewBinding.btnExportVideo.setEnabled(enable);
+        mViewBinding.btnExportVideo.setClickable(enable);
     }
 }

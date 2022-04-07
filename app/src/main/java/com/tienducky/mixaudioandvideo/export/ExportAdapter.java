@@ -3,5 +3,7 @@ package com.tienducky.mixaudioandvideo.export;
 public interface ExportAdapter {
     void onExportComplete();
 
-    void onExportError();
+    void onExportFail();
+
+    void onExportProgressUpdate(int progress);
 }

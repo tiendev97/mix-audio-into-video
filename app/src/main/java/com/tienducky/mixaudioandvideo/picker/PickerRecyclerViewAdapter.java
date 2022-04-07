@@ -7,8 +7,10 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
+import com.tienducky.mixaudioandvideo.R;
 import com.tienducky.mixaudioandvideo.databinding.PickerRecyclerViewItemLayoutBinding;
 import com.tienducky.mixaudioandvideo.models.MediaItem;
+import com.tienducky.mixaudioandvideo.models.MediaType;
 
 import java.util.ArrayList;
 
@@ -56,6 +58,7 @@ public class PickerRecyclerViewAdapter extends RecyclerView.Adapter<PickerRecycl
         public void setData(MediaItem mediaItem) {
             Glide.with(mBinding.getRoot())
                     .load(mediaItem.getFilePath())
+                    .placeholder(mediaItem.isVideo() ? R.drawable.icons_video : R.drawable.icons_audio)
                     .into(mBinding.fileThumbnail);
             mBinding.fileName.setText(mediaItem.getFileName());
             mBinding.getRoot().setOnClickListener(v -> mListener.onMediaItemSelected(mediaItem));

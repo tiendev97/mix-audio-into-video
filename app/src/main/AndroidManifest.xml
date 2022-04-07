@@ -17,6 +17,7 @@
             android:exported="true" />
         <activity
             android:name=".MainActivity"
+            android:configChanges="layoutDirection|screenSize"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
