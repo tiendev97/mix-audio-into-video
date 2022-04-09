@@ -107,7 +107,7 @@ public class PickerActivity extends AppCompatActivity {
                 String filePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
                 String displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
 
-                if(!isValidFilePath(filePath) && isMp3File(filePath)) {
+                if(!isValidFilePath(filePath) || !isMp3File(filePath)) {
                     continue;
                 }
 
