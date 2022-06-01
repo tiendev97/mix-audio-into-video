@@ -107,7 +107,7 @@ public class PickerActivity extends AppCompatActivity {
                 String filePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
                 String displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
 
-                if(!isValidFilePath(filePath) || !isMp3File(filePath)) {
+                if(!isValidFilePath(filePath) || !isAudioSupport(filePath)) {
                     continue;
                 }
 
@@ -130,8 +130,8 @@ public class PickerActivity extends AppCompatActivity {
         return filePath.substring(filePath.lastIndexOf("/") + 1);
     }
 
-    private boolean isMp3File(String filePath) {
+    private boolean isAudioSupport(String filePath) {
         String fileExtension = filePath.substring(filePath.lastIndexOf("."));
-        return fileExtension.equalsIgnoreCase(".mp3");
+        return fileExtension.equalsIgnoreCase(".mp3") || fileExtension.equalsIgnoreCase(".ogg");
     }
 }

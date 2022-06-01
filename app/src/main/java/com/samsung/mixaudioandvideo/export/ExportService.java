@@ -24,8 +24,8 @@ import java.nio.ByteBuffer;
 public class ExportService {
     private static final String TAG = "ExportService";
 
-    private static final String OUTPUT_AUDIO_KEY_MINE = "audio/mp4a-latm";
-    private static final long TIMEOUT_US = 10000L;
+    private static final long TIMEOUT_US = 1000L;
+    private static final int AUDIO_MAX_INPUT_SIZE = 10485760;
 
     private final BackgroundThreadPoster mExportThread = new BackgroundThreadPoster();
     private final UiThreadPoster mUIThread = new UiThreadPoster();
@@ -107,10 +107,19 @@ public class ExportService {
         mVideoDuration = mInputVideoFormat.getLong(MediaFormat.KEY_DURATION);
 
         // prepare audio decoder and encoder
-        prepareAudioDecoderAndEncoder();
+        if (!isAudioSupported()) {
+            prepareAudioDecoderAndEncoder();
+        }
 
         // prepare media muxer
         prepareMediaMuxer();
+    }
+
+    private boolean isAudioSupported() {
+        String minType = mInputAudioFormat.getString(MediaFormat.KEY_MIME);
+        return minType.equals(MediaFormat.MIMETYPE_AUDIO_AAC) // audio/mp4a-latm
+                || minType.equals(MediaFormat.MIMETYPE_AUDIO_AMR_NB) // audio/3gpp
+                || minType.equals(MediaFormat.MIMETYPE_AUDIO_AMR_WB); // audio/amr-wb
     }
 
     private void waitMuxerFinished() {
@@ -148,31 +157,51 @@ public class ExportService {
         Log.i(TAG, "cleanup resources stopByUser: " + mStopExport);
 
         if (muxer != null) {
-            muxer.stop();
-            muxer.release();
-            muxer = null;
+            try {
+                muxer.stop();
+                muxer.release();
+                muxer = null;
+            } catch (Exception ex) {
+
+            }
         }
 
         if (mAudioDecoder != null) {
-            mAudioDecoder.stop();
-            mAudioDecoder.release();
-            mAudioDecoder = null;
+            try {
+                mAudioDecoder.stop();
+                mAudioDecoder.release();
+                mAudioDecoder = null;
+            } catch (Exception ex) {
+
+            }
         }
 
         if (mAudioEncoder != null) {
-            mAudioEncoder.stop();
-            mAudioEncoder.release();
-            mAudioEncoder = null;
+            try {
+                mAudioEncoder.stop();
+                mAudioEncoder.release();
+                mAudioEncoder = null;
+            } catch (Exception ex) {
+
+            }
         }
 
         if (mVideoExtractor != null) {
-            mVideoExtractor.release();
-            mVideoExtractor = null;
+            try {
+                mVideoExtractor.release();
+                mVideoExtractor = null;
+            } catch (Exception ex) {
+
+            }
         }
 
         if (mAudioExtractor != null) {
-            mAudioExtractor.release();
-            mVideoExtractor = null;
+            try {
+                mAudioExtractor.release();
+                mVideoExtractor = null;
+            } catch (Exception ex) {
+
+            }
         }
 
         if (mStopExport) {
@@ -218,6 +247,7 @@ public class ExportService {
     private void prepareAudioDecoderAndEncoder() throws IOException {
         Log.i(TAG, "1. prepareAudioDecoderAndEncoder ");
         mAudioExtractor.selectTrack(mInputAudioTrack);
+        mInputAudioFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, AUDIO_MAX_INPUT_SIZE);
         mAudioDecoder = MediaCodec.createDecoderByType(mInputAudioFormat.getString(MediaFormat.KEY_MIME));
         mAudioDecoder.configure(mInputAudioFormat, null, null, 0);
         mAudioDecoder.start();
@@ -226,6 +256,9 @@ public class ExportService {
         mAudioEncoder = MediaCodec.createEncoderByType(audioOutputFormat.getString(MediaFormat.KEY_MIME));
         mAudioEncoder.configure(audioOutputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mAudioEncoder.start();
+
+        Log.i(TAG, mInputAudioFormat.toString());
+        Log.i(TAG, audioOutputFormat.toString());
     }
 
     /***
@@ -237,7 +270,7 @@ public class ExportService {
         Log.i(TAG, "2. prepareMediaMuxer ");
         muxer = new MediaMuxer(mOutputFile.getPath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         mMuxerVideoTrack = muxer.addTrack(mInputVideoFormat);
-        mMuxerAudioTrack = muxer.addTrack(mAudioEncoder.getOutputFormat());
+        mMuxerAudioTrack = muxer.addTrack(isAudioSupported() ? mInputAudioFormat : mAudioEncoder.getOutputFormat());
         muxer.start();
     }
 
@@ -306,7 +339,61 @@ public class ExportService {
      * start export audio
      */
     private void startMuxAudio() {
-        Log.i(TAG, "4. startMuxAudio ");
+        Log.i(TAG, "4 startMuxAudio ");
+        if (isAudioSupported()) {
+            startMuxAudio_Supported();
+        } else {
+            startMuxAudio_ConvertToAcc();
+        }
+        synchronized (this) {
+            mMuxAudioDone = true;
+            notifyAll();
+        }
+    }
+
+    @SuppressLint("WrongConstant")
+    private void startMuxAudio_Supported() {
+        Log.i(TAG, "4.1 startMuxAudio_Supported ");
+        long startTime = System.currentTimeMillis();
+        int maxBufferSize = mInputAudioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+        MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+        ByteBuffer audioBuffer = ByteBuffer.allocateDirect(maxBufferSize);
+        mAudioExtractor.selectTrack(mInputAudioTrack);
+
+        try {
+            while (!mStopExport) {
+                int size = mAudioExtractor.readSampleData(audioBuffer, 0);
+                if (size == -1) {
+                    if (bufferInfo.presentationTimeUs < mVideoDuration) {
+                        mAudioExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                    } else {
+                        break;
+                    }
+                } else if (bufferInfo.presentationTimeUs > mVideoDuration) {
+                    break;
+                }
+
+                long sampleTimeUs = mAudioExtractor.getSampleTime();
+                int flags = mAudioExtractor.getSampleFlags();
+                bufferInfo.presentationTimeUs = sampleTimeUs;
+                bufferInfo.flags = flags;
+                bufferInfo.size = size;
+                muxer.writeSampleData(mMuxerAudioTrack, audioBuffer, bufferInfo);
+                mAudioExtractor.advance();
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            mErrorWhenExporting = true;
+        }
+        Log.i(TAG, "total time export audio: " + (System.currentTimeMillis() - startTime));
+        synchronized (this) {
+            mMuxAudioDone = true;
+            notifyAll();
+        }
+    }
+
+    private void startMuxAudio_ConvertToAcc() {
+        Log.i(TAG, "4.1 startMuxAudio_ConvertToAcc ");
         long startTime = System.currentTimeMillis();
 
         try {
@@ -473,12 +560,12 @@ public class ExportService {
     @NonNull
     private MediaFormat prepareAudioOutputFormat(MediaFormat inputAudioFormat) {
         MediaFormat outputFormat = new MediaFormat();
-        outputFormat.setString(MediaFormat.KEY_MIME, OUTPUT_AUDIO_KEY_MINE);
+        outputFormat.setString(MediaFormat.KEY_MIME, MediaFormat.MIMETYPE_AUDIO_AAC);
         outputFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
         outputFormat.setInteger(MediaFormat.KEY_SAMPLE_RATE, inputAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE));
         outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, inputAudioFormat.getInteger(MediaFormat.KEY_BIT_RATE));
         outputFormat.setInteger(MediaFormat.KEY_CHANNEL_COUNT, inputAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT));
-        outputFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1048576); // // avoid BufferOverflowException
+        outputFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, AUDIO_MAX_INPUT_SIZE); // // avoid BufferOverflowException
         return outputFormat;
     }
 }
